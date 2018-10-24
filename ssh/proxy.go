@@ -33,7 +33,7 @@ type ProxyConfig struct {
 	// Specify upstream host by SSH username
 	FindUpstreamHook    func(username string) (string, error)
 	// Fetch authorized_keys to confirm registration of the client's public key.
-	FetchAuthorizedKeysHook func(username string) ([]byte, error)
+	FetchAuthorizedKeysHook func(username string, host string) ([]byte, error)
 	// Fetch the private key used when sshr performs public key authentication as a client user
 	// to the upstream host
 	FetchPrivateKeyHook func(username string) ([]byte, error)
@@ -67,9 +67,9 @@ func (p *ProxyConn) handleAuthMsg(msg *userAuthRequestMsg, proxyConf *ProxyConfi
 			return nil, nil
 		}
 
-		authKeys, err := proxyConf.FetchAuthorizedKeysHook(username)
+		authKeys, err := proxyConf.FetchAuthorizedKeysHook(username, proxyConf.DestinationHost)
 		if err != nil {
-			return noneAuthMsg(username), nil
+			break
 		}
 
 		ok, err := checkPublicKeyRegistration(authKeys, downStreamPublicKey)
@@ -143,7 +143,7 @@ func checkPublicKeyRegistration(authKeys []byte, publicKey PublicKey) (bool, err
 	return false, nil
 }
 
-func fetchAuthorizedKeysFromHomeDir(username string) ([]byte, error) {
+func fetchAuthorizedKeysFromHomeDir(username string, host string) ([]byte, error) {
 	var authKeys []byte
 	authKeys, err := userAuthorizedKeysFile.read(username)
 	if err != nil {
