@@ -32,8 +32,8 @@ type ProxyConfig struct {
 	DestinationPort     string
 	// Specify upstream host by SSH username
 	FindUpstreamHook    func(username string) (string, error)
-	// Confirm registration of client's public key. (authorized_keys file is usually used)
-	CheckPublicKeyHook  func(username string, publicKey PublicKey) (bool, error)
+	// Fetch authorized_keys to confirm registration of the client's public key.
+	FetchAuthorizedKeysHook func(username string) ([]byte, error)
 	// Fetch the private key used when sshr performs public key authentication as a client user
 	// to the upstream host
 	FetchPrivateKeyHook func(username string) ([]byte, error)
@@ -48,8 +48,8 @@ func (p *ProxyConn) handleAuthMsg(msg *userAuthRequestMsg, proxyConf *ProxyConfi
 	username := proxyConf.User
 	switch msg.Method {
 	case "publickey":
-		if proxyConf.CheckPublicKeyHook == nil {
-			proxyConf.CheckPublicKeyHook = checkPublicKeyFromAuthorizedKeys
+		if proxyConf.FetchAuthorizedKeysHook == nil {
+			proxyConf.FetchAuthorizedKeysHook = fetchAuthorizedKeysFromHomeDir
 		}
 		if proxyConf.FetchPrivateKeyHook == nil {
 			proxyConf.FetchPrivateKeyHook = fetchPrivateKeyFromHomeDir
@@ -67,7 +67,12 @@ func (p *ProxyConn) handleAuthMsg(msg *userAuthRequestMsg, proxyConf *ProxyConfi
 			return nil, nil
 		}
 
-		ok, err := proxyConf.CheckPublicKeyHook(username, downStreamPublicKey)
+		authKeys, err := proxyConf.FetchAuthorizedKeysHook(username)
+		if err != nil {
+			break
+		}
+
+		ok, err := checkPublicKeyRegistration(authKeys, downStreamPublicKey)
 		if err != nil || !ok {
 			return noneAuthMsg(username), nil
 		}
@@ -120,14 +125,10 @@ func (p *ProxyConn) handleAuthMsg(msg *userAuthRequestMsg, proxyConf *ProxyConfi
 	return nil, err
 }
 
-func checkPublicKeyFromAuthorizedKeys(username string, publicKey PublicKey) (bool, error) {
+func checkPublicKeyRegistration(authKeys []byte, publicKey PublicKey) (bool, error) {
 	publicKeyData := publicKey.Marshal()
-	var authKeys []byte
-	authKeys, err := userAuthorizedKeysFile.read(username)
-	if err != nil {
-		return false, err
-	}
 
+	var err error
 	var authorizedPublicKey PublicKey
 	for len(authKeys) > 0 {
 		authorizedPublicKey, _, _, authKeys, err = ParseAuthorizedKey(authKeys)
@@ -140,6 +141,15 @@ func checkPublicKeyFromAuthorizedKeys(username string, publicKey PublicKey) (boo
 		}
 	}
 	return false, nil
+}
+
+func fetchAuthorizedKeysFromHomeDir(username string) ([]byte, error) {
+	var authKeys []byte
+	authKeys, err := userAuthorizedKeysFile.read(username)
+	if err != nil {
+		return nil, err
+	}
+	return authKeys, nil
 }
 
 func fetchPrivateKeyFromHomeDir(username string) ([]byte, error) {
