@@ -37,6 +37,9 @@ type ProxyConfig struct {
 	// Fetch the private key used when sshr performs public key authentication as a client user
 	// to the upstream host
 	FetchPrivateKeyHook func(username string) ([]byte, error)
+	// When using only the master key when sending requests to the upstream server, set A to true.
+	UseMasterKey        bool
+	MasterKeyPath       string
 }
 
 type ProxyConn struct {
@@ -50,9 +53,6 @@ func (p *ProxyConn) handleAuthMsg(msg *userAuthRequestMsg, proxyConf *ProxyConfi
 	case "publickey":
 		if proxyConf.FetchAuthorizedKeysHook == nil {
 			proxyConf.FetchAuthorizedKeysHook = fetchAuthorizedKeysFromHomeDir
-		}
-		if proxyConf.FetchPrivateKeyHook == nil {
-			proxyConf.FetchPrivateKeyHook = fetchPrivateKeyFromHomeDir
 		}
 
 		downStreamPublicKey, isQuery, sig, err := parsePublicKeyMsg(msg)
@@ -82,7 +82,7 @@ func (p *ProxyConn) handleAuthMsg(msg *userAuthRequestMsg, proxyConf *ProxyConfi
 			break
 		}
 
-		privateBytes, err := proxyConf.FetchPrivateKeyHook(username)
+		privateBytes, err := fetchPrivateKey(proxyConf)
 		if err != nil {
 			break
 		}
@@ -150,6 +150,28 @@ func fetchAuthorizedKeysFromHomeDir(username string) ([]byte, error) {
 		return nil, err
 	}
 	return authKeys, nil
+}
+
+func fetchPrivateKey(proxyConf *ProxyConfig) ([]byte, error) {
+	var privateBytes []byte
+	var err error
+	if proxyConf.UseMasterKey {
+		privateBytes, err = ioutil.ReadFile(proxyConf.MasterKeyPath)
+		if err != nil {
+			return nil, err
+		}
+	} else if proxyConf.FetchPrivateKeyHook == nil {
+		privateBytes, err =  fetchPrivateKeyFromHomeDir(proxyConf.User)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		privateBytes, err = proxyConf.FetchPrivateKeyHook(proxyConf.User)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return privateBytes, nil
 }
 
 func fetchPrivateKeyFromHomeDir(username string) ([]byte, error) {
