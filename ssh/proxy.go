@@ -532,7 +532,7 @@ func (c *connection) serverHandshakeWithNoAuth(config *ServerConfig) (*Permissio
 	if config.ServerVersion != "" {
 		c.serverVersion = []byte(config.ServerVersion)
 	} else {
-		c.serverVersion = []byte("SSH-2.0-Go")
+		c.serverVersion = []byte("SSH-2.0-sshr")
 	}
 	c.clientVersion, err = exchangeVersions(c.sshConn.conn, c.serverVersion)
 	if err != nil {
