@@ -25,10 +25,8 @@ type AuthType int
 
 type ProxyConfig struct {
 	Config
-	User                string
 	ServerConfig        *ServerConfig
 	ClientConfig        *ClientConfig
-	DestinationHost     string
 	DestinationPort     string
 	// Specify upstream host by SSH username
 	FindUpstreamHook    func(username string) (string, error)
@@ -43,12 +41,14 @@ type ProxyConfig struct {
 }
 
 type ProxyConn struct {
-	Upstream   *connection
-	Downstream *connection
+	User            string
+	DestinationHost string
+	Upstream        *connection
+	Downstream      *connection
 }
 
 func (p *ProxyConn) handleAuthMsg(msg *userAuthRequestMsg, proxyConf *ProxyConfig) (*userAuthRequestMsg, error) {
-	username := proxyConf.User
+	username := msg.User
 	switch msg.Method {
 	case "publickey":
 		if proxyConf.FetchAuthorizedKeysHook == nil {
@@ -67,7 +67,7 @@ func (p *ProxyConn) handleAuthMsg(msg *userAuthRequestMsg, proxyConf *ProxyConfi
 			return nil, nil
 		}
 
-		authKeys, err := proxyConf.FetchAuthorizedKeysHook(username, proxyConf.DestinationHost)
+		authKeys, err := proxyConf.FetchAuthorizedKeysHook(username, p.DestinationHost)
 		if err != nil {
 			return noneAuthMsg(username), nil
 		}
@@ -82,7 +82,7 @@ func (p *ProxyConn) handleAuthMsg(msg *userAuthRequestMsg, proxyConf *ProxyConfi
 			break
 		}
 
-		privateBytes, err := fetchPrivateKey(proxyConf)
+		privateBytes, err := fetchPrivateKey(proxyConf, p.User)
 		if err != nil {
 			break
 		}
@@ -152,7 +152,7 @@ func fetchAuthorizedKeysFromHomeDir(username string, host string) ([]byte, error
 	return authKeys, nil
 }
 
-func fetchPrivateKey(proxyConf *ProxyConfig) ([]byte, error) {
+func fetchPrivateKey(proxyConf *ProxyConfig, username string) ([]byte, error) {
 	var privateBytes []byte
 	var err error
 	if proxyConf.UseMasterKey {
@@ -161,12 +161,12 @@ func fetchPrivateKey(proxyConf *ProxyConfig) ([]byte, error) {
 			return nil, err
 		}
 	} else if proxyConf.FetchPrivateKeyHook == nil {
-		privateBytes, err =  fetchPrivateKeyFromHomeDir(proxyConf.User)
+		privateBytes, err =  fetchPrivateKeyFromHomeDir(username)
 		if err != nil {
 			return nil, err
 		}
 	} else {
-		privateBytes, err = proxyConf.FetchPrivateKeyHook(proxyConf.User)
+		privateBytes, err = proxyConf.FetchPrivateKeyHook(username)
 		if err != nil {
 			return nil, err
 		}
