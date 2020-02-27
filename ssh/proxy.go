@@ -276,7 +276,7 @@ func (p *ProxyConn) signAgain(user string, msg *userAuthRequestMsg, signer Signe
 }
 
 func (p *ProxyConn) Wait() error {
-	c := make(chan error)
+	c := make(chan error, 1)
 
 	go func() {
 		c <- piping(p.Upstream.transport, p.Downstream.transport)
